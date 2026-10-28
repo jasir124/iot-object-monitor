@@ -110,7 +110,8 @@ void setup() {
   Serial.println(F("  Target Hardware: ESP32 + Digital IR Sensor (GPIO 27)  "));
   Serial.println(F("========================================================"));
 
-  pinMode(IR_SENSOR_PIN, INPUT);
+  // Configure digital IR proximity sensor pin with internal pullup
+  pinMode(IR_SENSOR_PIN, INPUT_PULLUP);
 
   lastRawReading = digitalRead(IR_SENSOR_PIN);
   currentStableDetection = readSensorState();

@@ -9,6 +9,7 @@ import {
   Radio,
   RefreshCw,
   Sparkles,
+  SlidersHorizontal,
   Volume2,
   VolumeX,
   Wifi,
@@ -116,8 +117,27 @@ export function App() {
 
   // Interactive settings
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [invertPolarity, setInvertPolarity] = useState<boolean>(() => {
+    const saved = localStorage.getItem("invert_sensor_polarity");
+    // Default to true (Active-HIGH) so the currently latched cleared state immediately shows NO OBJECT
+    return saved !== null ? saved === "true" : true;
+  });
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
   const [dwellStartTime, setDwellStartTime] = useState<Date | null>(null);
+
+  const toggleInvertPolarity = () => {
+    setInvertPolarity((prev) => {
+      const next = !prev;
+      localStorage.setItem("invert_sensor_polarity", String(next));
+      lastDetectionStateRef.current = null;
+      pushToast(
+        "⚙️ Sensor Polarity Switched",
+        `Detection logic flipped to ${next ? "Inverted (Active-HIGH)" : "Normal (Active-LOW)"}.`,
+        "info"
+      );
+      return next;
+    });
+  };
 
   // Guards & Refs
   const lastDetectionStateRef = useRef<boolean | null>(null);
@@ -177,9 +197,9 @@ export function App() {
     setLatestReading(reading);
     setApiConnection("CONNECTED");
 
-    // Check for state transitions
+    // Check for state transitions (factoring in polarity calibration)
     const prevState = lastDetectionStateRef.current;
-    const currentState = reading.object_detected;
+    const currentState = invertPolarity ? !reading.object_detected : reading.object_detected;
 
     if (prevState === null) {
       lastDetectionStateRef.current = currentState;
@@ -222,7 +242,7 @@ export function App() {
       if (prev.some((r) => r.id === reading.id)) return prev;
       return [reading, ...prev.slice(0, selectedLimit - 1)];
     });
-  }, [pushToast, soundEnabled, selectedLimit]);
+  }, [pushToast, soundEnabled, selectedLimit, invertPolarity]);
 
   // 2. Connect Supabase Realtime WebSocket when config is ready
   useEffect(() => {
@@ -342,28 +362,37 @@ export function App() {
   const freshnessState: FreshnessState =
     readingAgeSec === null ? "UNKNOWN" : readingAgeSec <= 15 ? "LIVE" : readingAgeSec <= 35 ? "NORMAL" : "STALE";
 
+  const effectiveLatestDetected = latestReading
+    ? (invertPolarity ? !latestReading.object_detected : latestReading.object_detected)
+    : null;
+
   const presenceState: PresenceState =
-    latestReading === null ? "UNKNOWN" : latestReading.object_detected ? "PRESENT" : "ABSENT";
+    latestReading === null ? "UNKNOWN" : effectiveLatestDetected ? "PRESENT" : "ABSENT";
 
   // Recharts timeline data prep
   const chartData = [...history]
     .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-    .map((item) => ({
-      time: new Date(item.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-      detected: item.object_detected ? 1 : 0,
-      state: item.object_detected ? "Present" : "Empty",
-      id: item.id,
-    }));
+    .map((item) => {
+      const isDet = invertPolarity ? !item.object_detected : item.object_detected;
+      return {
+        time: new Date(item.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+        detected: isDet ? 1 : 0,
+        state: isDet ? "Present" : "Empty",
+        id: item.id,
+      };
+    });
 
   // Occupancy metrics
-  const detectedCount = history.filter((r) => r.object_detected).length;
+  const detectedCount = history.filter((r) => invertPolarity ? !r.object_detected : r.object_detected).length;
   const totalCount = history.length;
   const occupancyPercentage = totalCount > 0 ? Math.round((detectedCount / totalCount) * 100) : 0;
 
   // Transitions counter
   let transitionCount = 0;
   for (let i = 0; i < history.length - 1; i++) {
-    if (history[i].object_detected !== history[i + 1].object_detected) {
+    const aDet = invertPolarity ? !history[i].object_detected : history[i].object_detected;
+    const bDet = invertPolarity ? !history[i + 1].object_detected : history[i + 1].object_detected;
+    if (aDet !== bDet) {
       transitionCount++;
     }
   }
@@ -479,6 +508,21 @@ export function App() {
               </span>
               <span>{isRealtimeActive ? "Supabase Realtime" : "Polling Active"}</span>
             </div>
+
+            {/* Sensor Polarity Invert / Calibration Button */}
+            <button
+              onClick={toggleInvertPolarity}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition-all shadow-sm ${
+                invertPolarity
+                  ? "bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100"
+                  : "bg-white border-slate-200 text-slate-600 hover:text-slate-800 hover:bg-slate-50"
+              }`}
+              title="Flip sensor logic between Normal (Active-LOW) and Inverted (Active-HIGH)"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
+              <span className="hidden sm:inline">Polarity:</span>
+              <span className="font-semibold">{invertPolarity ? "Inverted (Active-HIGH)" : "Normal (Active-LOW)"}</span>
+            </button>
 
             {/* Sound Chime Toggle */}
             <button
@@ -893,23 +937,24 @@ export function App() {
               <tbody className="divide-y divide-slate-100 text-slate-700">
                 {history.slice(0, 15).map((row) => {
                   const ageSec = Math.max(0, Math.floor((currentTime.getTime() - new Date(row.created_at).getTime()) / 1000));
+                  const isDet = invertPolarity ? !row.object_detected : row.object_detected;
                   return (
                     <tr key={row.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="py-3 px-6 sm:px-8 font-mono text-slate-500">#{row.id}</td>
                       <td className="py-3 px-4">
                         <span
                           className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
-                            row.object_detected
+                            isDet
                               ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                               : "bg-slate-100 text-slate-600 border-slate-200"
                           }`}
                         >
                           <span
                             className={`w-1.5 h-1.5 rounded-full ${
-                              row.object_detected ? "bg-emerald-500" : "bg-slate-400"
+                              isDet ? "bg-emerald-500" : "bg-slate-400"
                             }`}
                           />
-                          {row.object_detected ? "PRESENT" : "NO OBJECT"}
+                          {isDet ? "PRESENT" : "NO OBJECT"}
                         </span>
                       </td>
                       <td className="py-3 px-4 font-mono text-slate-600">{row.device_id}</td>

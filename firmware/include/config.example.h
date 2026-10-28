@@ -28,9 +28,9 @@
 #define IR_SENSOR_PIN 27
 
 // Sensor Polarity Configuration
-// Most digital IR proximity modules (e.g., TCRT5000 / FC-51) output LOW when an object reflects the IR beam.
-// If your sensor outputs HIGH on detection, set this to false.
-#define SENSOR_ACTIVE_LOW true
+// Set to true if LOW = Object Present (standard FC-51 reflection)
+// Set to false if HIGH = Object Present (or if sensor light stays ON when cleared)
+#define SENSOR_ACTIVE_LOW false
 
 // Timing Configuration (in milliseconds)
 #define DEBOUNCE_INTERVAL_MS 100     // Minimum stable signal duration to register a state change
