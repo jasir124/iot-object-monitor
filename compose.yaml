@@ -1,0 +1,14 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///sensor_readings.db}
+      - DEVICE_API_KEY=${DEVICE_API_KEY:-development-secret-key}
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped

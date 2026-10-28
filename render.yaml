@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: iot-object-monitor
+    env: docker
+    plan: free
+    region: oregon
+    dockerfilePath: Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DEVICE_API_KEY
+        sync: false
+      - key: PYTHONUNBUFFERED
+        value: "1"
