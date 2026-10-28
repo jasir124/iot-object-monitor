@@ -3,7 +3,7 @@ services:
     name: iot-object-monitor
     env: docker
     plan: free
-    region: oregon
+    region: singapore
     dockerfilePath: Dockerfile
     dockerContext: .
     healthCheckPath: /health

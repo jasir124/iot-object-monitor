@@ -116,7 +116,7 @@ def main():
             "serviceDetails": {
                 "env": "docker",
                 "plan": "free",
-                "region": "oregon",
+                "region": "singapore",
                 "healthCheckPath": "/health",
                 "dockerfilePath": "Dockerfile",
                 "dockerContext": ".",
