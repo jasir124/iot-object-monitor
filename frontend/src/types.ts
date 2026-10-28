@@ -31,3 +31,19 @@ export interface HealthApiResponse {
   database: 'connected' | 'error';
   timestamp: string;
 }
+
+export interface AppConfig {
+  supabase_url: string;
+  supabase_anon_key: string;
+  default_device_id: string;
+  app_title: string;
+  realtime_enabled: boolean;
+}
+
+export interface ToastNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'present' | 'absent' | 'info';
+  timestamp: string;
+}

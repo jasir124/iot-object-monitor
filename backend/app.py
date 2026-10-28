@@ -237,6 +237,23 @@ def create_app(test_config=None):
                 "message": "Database query failed"
             }), 500
 
+    # --- Public Configuration Endpoint for Frontend (Supabase Realtime) ---
+    @app.route("/api/config", methods=["GET"])
+    def get_public_config():
+        """Provide public frontend configuration including Supabase Realtime parameters."""
+        supabase_url = os.getenv("SUPABASE_URL", "https://kvmkvwyjvzelgwkmhlbh.supabase.co")
+        supabase_anon_key = os.getenv("SUPABASE_ANON_KEY", "")
+        return jsonify({
+            "status": "success",
+            "data": {
+                "supabase_url": supabase_url,
+                "supabase_anon_key": supabase_anon_key,
+                "default_device_id": "esp32-01",
+                "app_title": "IoT Object Presence & Inventory Monitor",
+                "realtime_enabled": bool(supabase_anon_key)
+            }
+        }), 200
+
     # --- Unknown API Route Handler (JSON 404, never HTML) ---
     @app.route("/api", defaults={"subpath": ""})
     @app.route("/api/<path:subpath>")

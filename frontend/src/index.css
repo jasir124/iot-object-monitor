@@ -4,22 +4,93 @@
 
 @layer base {
   body {
-    @apply bg-slate-950 text-slate-100 selection:bg-emerald-500/30 selection:text-emerald-300;
+    @apply bg-slate-50 text-slate-800 antialiased selection:bg-emerald-500/20 selection:text-emerald-900;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    min-height: 100vh;
   }
 }
 
-/* Custom subtle scrollbar */
+/* Background Subtle Blueprint Grid */
+.bg-grid-pattern {
+  background-image: radial-gradient(rgba(148, 163, 184, 0.25) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Creative Sensor Animations */
+@keyframes beamPulse {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scaleY(0.95);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scaleY(1.05);
+  }
+}
+
+@keyframes packageFloat {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes toastSlide {
+  0% {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0px) scale(1);
+  }
+}
+
+@keyframes ringPulse {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.3;
+  }
+  100% {
+    transform: scale(0.85);
+    opacity: 0.8;
+  }
+}
+
+.animate-beam-pulse {
+  animation: beamPulse 2s ease-in-out infinite;
+}
+
+.animate-package-float {
+  animation: packageFloat 3.5s ease-in-out infinite;
+}
+
+.animate-toast-slide {
+  animation: toastSlide 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-ring-pulse {
+  animation: ringPulse 2.5s ease-in-out infinite;
+}
+
+/* Crisp Clean Light Scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
 }
 ::-webkit-scrollbar-track {
-  background: #090d16;
+  background: #f1f5f9;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1e293b;
+  background: #cbd5e1;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: #94a3b8;
 }

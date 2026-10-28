@@ -11,17 +11,15 @@
 #endif
 
 // ==============================================================================
-// State Machine & Telemetry Variables
+// State Variables
 // ==============================================================================
-
-// Debouncing variables
 int lastRawReading = -1;
 unsigned long lastRawChangeTime = 0;
 bool currentStableDetection = false;
 bool lastTransmittedDetection = false;
 bool hasTransmittedFirstReading = false;
+bool timeSynchronized = false;
 
-// Transmission timing
 unsigned long lastHeartbeatTime = 0;
 unsigned long lastTransmissionAttempt = 0;
 const unsigned long MIN_RETRY_INTERVAL_MS = 3000;
@@ -29,46 +27,28 @@ bool pendingTransmission = false;
 int consecutiveFailures = 0;
 
 // ==============================================================================
-// Helper: Sample the digital IR sensor with active-low/high polarity
+// Helper: Read IR Sensor with Configured Polarity
 // ==============================================================================
 bool readSensorState() {
   int raw = digitalRead(IR_SENSOR_PIN);
-  if (SENSOR_ACTIVE_LOW) {
-    return (raw == LOW); // LOW indicates obstacle reflection
-  } else {
-    return (raw == HIGH);
-  }
+  return (SENSOR_ACTIVE_LOW ? (raw == LOW) : (raw == HIGH));
 }
 
-// ==============================================================================
-// Helper: Ensure Wi-Fi is connected with non-blocking checks
-// ==============================================================================
-void ensureWiFiConnected() {
-  if (WiFi.status() == WL_CONNECTED) {
-    return;
-  }
-
-  static unsigned long lastConnectAttempt = 0;
-  unsigned long now = millis();
-
-  // Retry Wi-Fi connection every 5 seconds without blocking loop()
-  if (now - lastConnectAttempt >= 5000) {
-    lastConnectAttempt = now;
-    Serial.print(F("[WiFi] Connecting to SSID: "));
-    Serial.println(WIFI_SSID);
-    WiFi.disconnect();
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  }
-}
+static WiFiClientSecure secureClient;
+static bool secureClientInitialized = false;
 
 // ==============================================================================
-// Helper: Send JSON Telemetry to Cloud API Endpoint
+// Helper: Transmit Telemetry over HTTPS
 // ==============================================================================
 bool transmitReading(bool detected) {
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println(F("[HTTP] Skipped transmission: Wi-Fi not connected"));
+    Serial.println(F("[HTTP] Skipped: Wi-Fi not connected"));
     return false;
+  }
+
+  if (!secureClientInitialized) {
+    secureClient.setInsecure(); // Accepts modern TLS certificates
+    secureClientInitialized = true;
   }
 
   String url = String(API_BASE_URL) + "/api/readings";
@@ -77,26 +57,16 @@ bool transmitReading(bool detected) {
 
   HTTPClient http;
   http.setTimeout(HTTP_TIMEOUT_MS);
+  http.setReuse(false);
 
-  bool isHttps = url.startsWith("https://");
-  WiFiClientSecure secureClient;
-  WiFiClient plainClient;
-
-  if (isHttps) {
-#ifdef RENDER_CA_CERT
-    secureClient.setCACert(RENDER_CA_CERT);
-#else
-    secureClient.setInsecure(); // Fallback only if root CA not provided
-#endif
-    http.begin(secureClient, url);
-  } else {
-    http.begin(plainClient, url);
+  if (!http.begin(secureClient, url)) {
+    Serial.println(F("[HTTP] http.begin failed"));
+    return false;
   }
 
   http.addHeader("Content-Type", "application/json");
   http.addHeader("X-API-Key", DEVICE_API_KEY);
 
-  // Construct JSON Payload
   JsonDocument doc;
   doc["device_id"] = DEVICE_ID;
   doc["object_detected"] = detected;
@@ -104,28 +74,27 @@ bool transmitReading(bool detected) {
   String requestBody;
   serializeJson(doc, requestBody);
 
-  Serial.print(F("[HTTP] Sending: "));
+  Serial.print(F("[HTTP] Payload: "));
   Serial.println(requestBody);
 
   int httpCode = http.POST(requestBody);
-  unsigned long durationMs = millis() - lastTransmissionAttempt;
-
   bool success = false;
+
   if (httpCode > 0) {
-    Serial.printf("[HTTP] Response Code: %d (took %lu ms)\n", httpCode, durationMs);
+    Serial.printf("[HTTP] Code: %d\n", httpCode);
     if (httpCode == 200 || httpCode == 201) {
       success = true;
       String response = http.getString();
-      Serial.printf("[HTTP] Success response: %s\n", response.c_str());
+      Serial.printf("[HTTP] Response: %s\n", response.c_str());
     } else {
-      Serial.printf("[HTTP] Server responded with error status: %d\n", httpCode);
+      Serial.printf("[HTTP] Server returned error: %d\n", httpCode);
     }
   } else {
-    Serial.printf("[HTTP] POST failed: %s (Check Render cold-start / connection)\n",
-                  http.errorToString(httpCode).c_str());
+    Serial.printf("[HTTP] Failed: %s\n", http.errorToString(httpCode).c_str());
   }
 
   http.end();
+  secureClient.stop();
   return success;
 }
 
@@ -141,39 +110,48 @@ void setup() {
   Serial.println(F("  Target Hardware: ESP32 + Digital IR Sensor (GPIO 27)  "));
   Serial.println(F("========================================================"));
 
-  // Configure digital IR proximity sensor pin
   pinMode(IR_SENSOR_PIN, INPUT);
 
-  // Initial sensor state
   lastRawReading = digitalRead(IR_SENSOR_PIN);
   currentStableDetection = readSensorState();
   lastTransmittedDetection = currentStableDetection;
 
-  Serial.printf("[HW] Sensor initialized on GPIO %d (Active %s)\n",
+  Serial.printf("[HW] Sensor on GPIO %d (Active %s)\n",
                 IR_SENSOR_PIN, SENSOR_ACTIVE_LOW ? "LOW" : "HIGH");
   Serial.printf("[HW] Initial State: %s\n",
                 currentStableDetection ? "OBJECT PRESENT" : "NO OBJECT");
 
-  // Begin Wi-Fi connection
+  // Initialize Wi-Fi in Station mode
   WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.print(F("[WiFi] Initializing connection to "));
-  Serial.println(WIFI_SSID);
-
-  // Synchronize system time via SNTP for valid TLS certificates
-  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+  Serial.printf("[WiFi] Connecting to: %s\n", WIFI_SSID);
 }
 
 // ==============================================================================
-// Main Loop (Non-blocking Debouncing + Telemetry)
+// Main Loop
 // ==============================================================================
 void loop() {
   unsigned long now = millis();
 
-  // 1. Maintain Wi-Fi connectivity
-  ensureWiFiConnected();
+  // 1. Monitor Wi-Fi connection state
+  static bool wasConnected = false;
+  bool isConnected = (WiFi.status() == WL_CONNECTED);
 
-  // 2. Sample IR sensor with ~100ms stable debounce logic
+  if (isConnected && !wasConnected) {
+    wasConnected = true;
+    Serial.printf("[WiFi] Connected! IP: %s | RSSI: %d dBm\n",
+                  WiFi.localIP().toString().c_str(), WiFi.RSSI());
+    if (!timeSynchronized) {
+      configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+      timeSynchronized = true;
+    }
+  } else if (!isConnected && wasConnected) {
+    wasConnected = false;
+    Serial.println(F("[WiFi] Connection lost, reconnecting..."));
+  }
+
+  // 2. Debounce IR sensor reading (~100ms stable debounce)
   int rawState = digitalRead(IR_SENSOR_PIN);
   if (rawState != lastRawReading) {
     lastRawReading = rawState;
@@ -181,25 +159,24 @@ void loop() {
   }
 
   if ((now - lastRawChangeTime) >= DEBOUNCE_INTERVAL_MS) {
-    bool evaluatedState = (SENSOR_ACTIVE_LOW ? (rawState == LOW) : (rawState == HIGH));
-    if (evaluatedState != currentStableDetection) {
-      currentStableDetection = evaluatedState;
-      Serial.printf("[EVENT] Stable state changed -> %s\n",
+    bool evaluated = (SENSOR_ACTIVE_LOW ? (rawState == LOW) : (rawState == HIGH));
+    if (evaluated != currentStableDetection) {
+      currentStableDetection = evaluated;
+      Serial.printf("[EVENT] Sensor state -> %s\n",
                     currentStableDetection ? "OBJECT PRESENT" : "NO OBJECT");
-      // Immediate transmission requested on state transition
       pendingTransmission = true;
     }
   }
 
-  // 3. Evaluate Heartbeat interval (every 10s)
+  // 3. Heartbeat every 10 seconds
   if (!pendingTransmission && (now - lastHeartbeatTime >= HEARTBEAT_INTERVAL_MS)) {
-    Serial.println(F("[HEARTBEAT] 10s interval reached, queuing transmission"));
+    Serial.println(F("[HEARTBEAT] 10s timer, queuing update"));
     pendingTransmission = true;
   }
 
-  // 4. Handle Pending Transmission with bounded backoff
+  // 4. Send telemetry when connected
   if (pendingTransmission || !hasTransmittedFirstReading) {
-    if (WiFi.status() == WL_CONNECTED) {
+    if (isConnected) {
       if (now - lastTransmissionAttempt >= MIN_RETRY_INTERVAL_MS) {
         lastTransmissionAttempt = now;
         bool ok = transmitReading(currentStableDetection);
@@ -211,13 +188,12 @@ void loop() {
           consecutiveFailures = 0;
         } else {
           consecutiveFailures++;
-          Serial.printf("[WARN] Transmission attempt failed (%d consecutive failures)\n",
+          Serial.printf("[WARN] Attempt failed (%d consecutive failures)\n",
                         consecutiveFailures);
         }
       }
     }
   }
 
-  // Responsive loop delay
   delay(10);
 }
