@@ -11,6 +11,7 @@ deployment_state.json
 firmware/include/config.h
 firmware/.pio/
 .pio/
+supabase/.temp/
 
 # Python artifacts
 backend/__pycache__/
