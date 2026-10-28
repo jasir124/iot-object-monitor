@@ -97,7 +97,7 @@ bool transmitReading(bool detected) {
   http.addHeader("X-API-Key", DEVICE_API_KEY);
 
   // Construct JSON Payload
-  StaticJsonDocument<128> doc;
+  JsonDocument doc;
   doc["device_id"] = DEVICE_ID;
   doc["object_detected"] = detected;
 
