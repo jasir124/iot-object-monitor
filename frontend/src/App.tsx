@@ -119,8 +119,7 @@ export function App() {
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [invertPolarity, setInvertPolarity] = useState<boolean>(() => {
     const saved = localStorage.getItem("invert_sensor_polarity");
-    // Default to true (Active-HIGH) so the currently latched cleared state immediately shows NO OBJECT
-    return saved !== null ? saved === "true" : true;
+    return saved !== null ? saved === "true" : false;
   });
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
   const [dwellStartTime, setDwellStartTime] = useState<Date | null>(null);
